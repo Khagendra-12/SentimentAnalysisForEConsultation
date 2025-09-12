@@ -1,0 +1,1 @@
+return {"stars": round(weighted_avg, 2), "category": category, "fine_score": fine_score}
