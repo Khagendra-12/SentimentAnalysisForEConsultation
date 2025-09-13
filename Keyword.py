@@ -1,43 +1,48 @@
 import os
 import pdfplumber
 from analysis import analyze_text
+import sys
+import json
 
-def load_all_pdfs_text(folder_path):
+def load_specific_pdfs_text(folder_path, filenames):
     """
-    Load and combine text from all PDFs in a folder.
-    Returns a single combined text string.
+    Load and combine text from a specific list of PDF files in a folder.
     """
     all_text = ""
-    for filename in os.listdir(folder_path):
+    for filename in filenames:
         if filename.lower().endswith(".pdf"):
             file_path = os.path.join(folder_path, filename)
-            with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        all_text += page_text + " "
+            if os.path.exists(file_path):
+                with pdfplumber.open(file_path) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            all_text += page_text + " "
     return all_text.strip()
 
-def main():
-    folder = input("Enter path to PDF folder: ").strip()
-    if not os.path.exists(folder):
-        print("Folder does not exist!")
-        return
-
-    combined_text = load_all_pdfs_text(folder)
-    if not combined_text:
-        print("No text extracted from PDFs.")
-        return
-
-    print(f"\n=== Combined Analysis for all PDFs in {folder} ===")
-    result = analyze_text(combined_text)
-
-    if not result:
-        print("No keywords detected.")
-        return
-
-    for word, info in result.items():
-        print(f"{word}: count={info['count']}, sentiment={info['sentiment']}")
-
 if __name__ == "__main__":
-    main()
+    # --- NEW SCRIPT LOGIC ---
+    # Arguments will be: script_name, folder_path, sentiment_filter, file1, file2, ...
+    if len(sys.argv) < 4:
+        print("Usage: python Keyword.py <folder_path> <sentiment_filter> <file1> <file2> ...")
+        sys.exit(1)
+
+    folder = sys.argv[1]
+    sentiment_filter = sys.argv[2]
+    # Map the frontend's "suggestive" to the backend's "neutral"
+    if sentiment_filter == "suggestive":
+        sentiment_filter = "neutral"
+        
+    filenames = sys.argv[3:]
+
+    combined_text = load_specific_pdfs_text(folder, filenames)
+    
+    if not combined_text:
+        print(json.dumps({})) # Print empty JSON if no text
+        sys.exit(0)
+
+    # Use the modified analyze_text function with the sentiment filter
+    result = analyze_text(combined_text, sentiment_filter=sentiment_filter)
+
+    # Print the result as a JSON string so the server can easily parse it
+    print(json.dumps(result))
