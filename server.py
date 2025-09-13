@@ -5,24 +5,19 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import json
 
-# ... (Configuration is unchanged)
-
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'Dataset')
 ANALYSIS_SCRIPT = os.path.join(os.path.dirname(__file__), 'BaicAnalysis.py')
-ALLOWED_EXTENSIONS = {'pdf'}
 PER_COMMENT_SCRIPT = os.path.join(os.path.dirname(__file__), 'PerCommentAnal.py')
+ALLOWED_EXTENSIONS = {'pdf'}
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 CORS(app)
 
-
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- START: Modified function ---
 def run_analysis(filepath):
-    """Runs the analysis script and returns category and fine_score."""
     try:
         result = subprocess.run(
             ['python', ANALYSIS_SCRIPT, filepath],
@@ -39,33 +34,38 @@ def run_analysis(filepath):
     except Exception as e:
         print(f"Error running analysis: {e}")
         return "Error", 0
-# --- END: Modified function ---
 
+# --- MODIFIED ENDPOINT FOR MULTIPLE UPLOADS ---
 @app.route('/api/upload', methods=['POST'])
 def upload_and_analyze():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        
-        # --- CHANGE ---
-        category, fine_score = run_analysis(filepath)
-        sentiment_category = "suggestive" if category == "Neutral" else category.lower()
-        
-        return jsonify({
-            "filename": filename,
-            "category": sentiment_category,
-            "score": fine_score  # Send the score to the frontend
-        })
-        # --- END CHANGE ---
+    # Use getlist to handle multiple files under the same field name
+    files = request.files.getlist("files[]")
+    
+    if not files or all(f.filename == '' for f in files):
+        return jsonify({"error": "No selected files"}), 400
+    
+    results = []
+    for file in files:
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            category, fine_score = run_analysis(filepath)
+            sentiment_category = "suggestive" if category == "Neutral" else category.lower()
+            
+            results.append({
+                "filename": filename,
+                "category": sentiment_category,
+                "score": fine_score
+            })
 
-    return jsonify({"error": "File type not allowed"}), 400
+    if not results:
+        return jsonify({"error": "No valid PDF files were uploaded"}), 400
 
+    return jsonify(results) # Return a list of results
+
+# ... (rest of your server.py file is unchanged)
 @app.route('/api/keywords', methods=['POST'])
 def get_keywords():
     data = request.get_json()
